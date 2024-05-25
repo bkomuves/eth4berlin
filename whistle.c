@@ -19,7 +19,7 @@ $ gcc -O aes.c sha256.c rnd.c whistle.c -o whistle
 
 //------------------------------------------------------------------------------
 
-#define MIN(a,b)   ( ((a)<(b)) ? (a) : (b) )
+#define MIN(a,b)  ( ((a)<(b)) ? (a) : (b) )
 
 #define METADATA_LEN 128
 
@@ -422,12 +422,13 @@ offset=0;  // TMP DEBUGGING - TODO REMOVE
 
 //------------------------------------------------------------------------------
 
-void decrypt(const char *hex_key, const char* infile) {
+void decrypt(const char *hex_key, const char* infile, const char *outmsgfile) {
 
   if (debug) {
     printf("decrypting\n");
-    printf("key         = %s\n",hex_key);
-    printf("input file  = %s\n",infile);
+    printf("key            = `%s`\n",hex_key   );
+    printf("input file     = `%s`\n",infile    );
+    printf("decrypted file = `%s`\n",outmsgfile);
   }
 
   FILE *finp = fopen(infile,"rb");
@@ -526,6 +527,11 @@ void decrypt(const char *hex_key, const char* infile) {
       printf("message length = %d\n",msg_len);
       printf("original file name = `%s`\n",orig_fname);
     }
+
+    if (strlen(outmsgfile)!=0) {
+      strcpy( msg_out_fname, outmsgfile );
+    }
+
     printf("output file name = `%s`\n",msg_out_fname);
 
     FILE *fmsg = fopen(msg_out_fname,"wb");
@@ -549,6 +555,8 @@ void help() {
   printf("usage:\n\n");
   printf("$ whistle encrypt message.dat input.wav output.wav\n");
   printf("$ whistle decrypt <key> input.wav\n");
+  printf("$ whistle decrypt <key> input.wav decrypted.msg\n");
+  exit(0);
 }
 
 int main(int argc, char *argv[]) {
@@ -570,11 +578,22 @@ int main(int argc, char *argv[]) {
   }
 
   if (0==strncmp(argv[1],"decrypt",10)) {
-    if (argc != 4) {
+    if ((argc != 4) && (argc!= 5)) {
       help();
     }
     else {
-      decrypt(argv[2],argv[3]);
+      switch(argc) {
+        case 4:
+          decrypt(argv[2],argv[3],"");
+          break;
+        case 5:
+          decrypt(argv[2],argv[3],argv[4]);
+          break;
+        default:
+          help();
+          exit(0);
+          break;
+      }
     }
     return 0;
   }
