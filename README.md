@@ -24,10 +24,10 @@ third-party library credits
 TODO
 ----
 
-- add a makefile
-- make it possible to specify the output file name
-- make a checksum or HMAC or something, so if the decryption key is wrong 
-  but the pattern key is right, then it says bad decryption key instead of a crash
-- add an error-correcting code to the message
-- add a more robust encoding option which survives mp3 etc encoding
-- ...
+- [x] add a makefile
+- [ ] make it possible to specify the output file name
+- [ ] make a checksum or HMAC or something, so if the decryption key is wrong 
+      but the pattern key is right, then it says bad decryption key instead of a crash
+- [ ] add an error-correcting code to the message
+- [ ] add a more robust encoding option which survives mp3 etc encoding
+- [ ] ...
