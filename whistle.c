@@ -25,7 +25,7 @@ $ gcc -O aes.c sha256.c rnd.c whistle.c -o whistle
 
 //------------------------------------------------------------------------------
 
-const int debug = 1;
+const int debug = 0;
 
 void error(const char *msg) {
   printf("%s\n",msg);
