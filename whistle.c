@@ -3,7 +3,7 @@
 
 compile with:
 
-$ gcc -O aes.c sha256.c rnd.c whistle.c 
+$ gcc -O aes.c sha256.c rnd.c whistle.c -o whistle 
 
 */
 
@@ -25,7 +25,7 @@ $ gcc -O aes.c sha256.c rnd.c whistle.c
 
 //------------------------------------------------------------------------------
 
-const int debug = 0;
+const int debug = 1;
 
 void error(const char *msg) {
   printf("%s\n",msg);
@@ -155,7 +155,7 @@ void decode_from_low_bits(int nsamples, uint8_t *src, uint8_t *tgt, int stride) 
   for(int i=0; i<nsamples; i++) {
     int b = (i & 0x07);
     int k = (i >> 3  ); 
-    uint8_t bit = (src[4*i] & 1);
+    uint8_t bit = (src[stride*i] & 1);
     tgt[k] |= (bit << b);
   }
 }
@@ -187,61 +187,67 @@ void randomize_low_bits(WAVE *wavhdr, SHA256_CTX *ctx, int nsamples, uint8_t *tg
 //#define BUFSIZE (5*1024*1024)        // this is enough for lot of audio and also for the encoded message 
 
 void copy_bytes(WAVE *wavhdr, FILE *fsrc, FILE *ftgt, int nsamples) {
-  uint8_t *buf = (uint8_t*) malloc( BUFSIZE );
-  assert( buf != 0);
-  int64_t Kmax = BUFSIZE / wavhdr->sample_alignment;
-  int n = nsamples;
-  while (n > 0) {
-    int k = (n <= Kmax) ? n : Kmax;
-    fread (buf, k, wavhdr->sample_alignment, fsrc);
-    fwrite(buf, k, wavhdr->sample_alignment, ftgt);
-    n -= k;
-  }  
-  free(buf);
+  if (nsamples > 0) {
+    uint8_t *buf = (uint8_t*) malloc( BUFSIZE );
+    assert( buf != 0);
+    int64_t Kmax = BUFSIZE / wavhdr->sample_alignment;
+    int n = nsamples;
+    while (n > 0) {
+      int k = (n <= Kmax) ? n : Kmax;
+      fread (buf, k, wavhdr->sample_alignment, fsrc);
+      fwrite(buf, k, wavhdr->sample_alignment, ftgt);
+      n -= k;
+    }  
+    free(buf);
+  }
 }
 
 void copy_bytes_with_encoded_bits(WAVE *wavhdr, SHA256_CTX *ctx, uint8_t *message, FILE *fsrc, FILE *ftgt, int nsamples) {
-  uint8_t *buf = (uint8_t*) malloc( BUFSIZE );
-  assert( buf != 0 );
-  int64_t Kmax = BUFSIZE  / wavhdr->sample_alignment;
-  int n = nsamples;
-  while (n > 0) {
-    int k = (n <= Kmax) ? n : Kmax;
-    fread (buf, wavhdr->sample_alignment, k, fsrc);
-
-    // randomize all channels
-    for(int chn=0; chn < wavhdr->num_channels; chn++ ) {
-      randomize_low_bits( wavhdr, ctx, k, buf + 2*chn );
-    }
-
-    // copy the data into the first channel
-    encode_into_low_bits( k, message, buf, wavhdr->sample_alignment );
-
-    // write out
-    fwrite(buf, wavhdr->sample_alignment, k, ftgt);
-    n -= k;
-  }  
-  free(buf);
+  if (nsamples > 0) {
+    uint8_t *buf = (uint8_t*) malloc( BUFSIZE );
+    assert( buf != 0 );
+    int64_t Kmax = BUFSIZE  / wavhdr->sample_alignment;
+    int n = nsamples;
+    while (n > 0) {
+      int k = (n <= Kmax) ? n : Kmax;
+      fread (buf, wavhdr->sample_alignment, k, fsrc);
+  
+      // randomize all channels
+      for(int chn=0; chn < wavhdr->num_channels; chn++ ) {
+        randomize_low_bits( wavhdr, ctx, k, buf + 2*chn );
+      }
+  
+      // copy the data into the first channel
+      encode_into_low_bits( k, message, buf, wavhdr->sample_alignment );
+  
+      // write out
+      fwrite(buf, wavhdr->sample_alignment, k, ftgt);
+      n -= k;
+    }  
+    free(buf);
+  }
 }
 
 void copy_bytes_with_random_bits(WAVE *wavhdr, SHA256_CTX *ctx, FILE *fsrc, FILE *ftgt, int nsamples) {
-  uint8_t *buf = (uint8_t*) malloc( BUFSIZE );
-  assert( buf != 0 );
-  uint64_t Kmax = BUFSIZE  / wavhdr->sample_alignment;
-  int n = nsamples;
-  while (n > 0) {
-    int k = (n <= Kmax) ? n : Kmax;
-    fread (buf, wavhdr->sample_alignment, k, fsrc);
-
-    // randomize all channels
-    for(int chn=0; chn < wavhdr->num_channels; chn++ ) {
-      randomize_low_bits( wavhdr, ctx, k, buf + 2*chn );
-    }
-
-    fwrite(buf, wavhdr->sample_alignment, k, ftgt);
-    n -= k;
-  }  
-  free(buf);
+  if (nsamples > 0) {
+    uint8_t *buf = (uint8_t*) malloc( BUFSIZE );
+    assert( buf != 0 );
+    uint64_t Kmax = BUFSIZE  / wavhdr->sample_alignment;
+    int n = nsamples;
+    while (n > 0) {
+      int k = (n <= Kmax) ? n : Kmax;
+      fread (buf, wavhdr->sample_alignment, k, fsrc);
+  
+      // randomize all channels
+      for(int chn=0; chn < wavhdr->num_channels; chn++ ) {
+        randomize_low_bits( wavhdr, ctx, k, buf + 2*chn );
+      }
+  
+      fwrite(buf, wavhdr->sample_alignment, k, ftgt);
+      n -= k;
+    }  
+    free(buf);
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -256,9 +262,11 @@ void encrypt(const char *msgfile, const char* infile, const char *outfile) {
   }
 
   FILE *finp = fopen(infile,"rb");
+  if (!finp) { error("fatal: cannot open input .wav file"); }
   check_wav(finp);
 
   FILE *fmsg = fopen(msgfile,"rb");
+  if (!fmsg) { error("fatal: cannot open message file"); }
   fseek(fmsg, 0, SEEK_END);
   uint64_t msg_len = ftell(fmsg);
   fseek(fmsg, 0, SEEK_SET);
@@ -281,17 +289,25 @@ void encrypt(const char *msgfile, const char* infile, const char *outfile) {
     printf("number of seconds = %d\n",nseconds);
   }
 
+  int SAMPLERATE = wav_header.sample_rate;
+
   uint64_t rem_samples = nsamples - msg_bits;
-  if (rem_samples < 200000) {                              // we leave place for 4 seconds (3 at the beginning + 1 at end) + metadata + the key
+  if (rem_samples < SAMPLERATE*5) {                                  // we leave place for 5 seconds (3 at the beginning + 1 at end + metadata + the key + safety buffer)
     error("message is too long for this sound file!");
   }
-  uint64_t max_offset = MIN( rem_samples - 3*44000 , 44000*9 );      // min 3 second, max 12 seconds offset from the start
-  uint64_t offset     = 3*44000 + (my_random_long() % max_offset);   // add the 3 seconds back
-  offset = ((offset >> 3) << 3);                                     // make it whole byte boundary  
 
-  printf("offset   = %llu\n",offset);
-  printf("offset/8 = %llu\n",offset/8);
+  uint64_t max_offset = MIN( rem_samples - 2*SAMPLERATE , SAMPLERATE*10 );    // min 2 second, max 12 seconds offset from the start
+  uint64_t offset     = 2*SAMPLERATE + (my_random_long() % max_offset);       // add the 3 seconds back
+  offset = ((offset >> 3) << 3);                                              // make it whole byte boundary  
 
+offset=0;  // TMP DEBUGGING - TODO REMOVE
+
+  if (debug) {
+    printf("offset   (samples)   = %llu\n",offset);
+    printf("offset/8 (msg bytes) = %llu\n",offset/8);
+    printf("offset in seconds    = %0.2f\n",((double)offset)/SAMPLERATE);
+  }
+ 
   // read the message 
 
   uint8_t *msgbuf = (uint8_t*) malloc(msg_len);
@@ -319,7 +335,7 @@ void encrypt(const char *msgfile, const char* infile, const char *outfile) {
   char hex_key[65];
   hex_encode(32,key,hex_key);
 
-  // also an aes key
+  // also an AES key
   
   sha256_update(&ctx, (uint8_t*)(&rnd2), sizeof(unsigned long) );
   sha256_update(&ctx, (uint8_t*)(&rnd1), sizeof(unsigned long) );
@@ -359,6 +375,7 @@ void encrypt(const char *msgfile, const char* infile, const char *outfile) {
   metadata[ METADATA_LEN - 1 ] = 0;
 
   FILE *fout = fopen(outfile,"wb");
+  if (!fout) { error("fatal: cannot create output file"); }
   fwrite(&wav_header,44,1,fout);
 
   // encrypt metadata + message
@@ -414,6 +431,7 @@ void decrypt(const char *hex_key, const char* infile) {
   }
 
   FILE *finp = fopen(infile,"rb");
+  if (!finp) { error("cannot open input .wav file"); }
   check_wav(finp);
 
   // decode the hex key
@@ -432,24 +450,33 @@ void decrypt(const char *hex_key, const char* infile) {
   uint8_t *buf = (uint8_t*) malloc( BUFSIZE );
   int m = fread(buf, 1, BUFSIZE, finp);
 
+  if (debug) {
+    printf("loaded %d bytes\n",m);
+  }
+
   // extract bits
 
-  int buf_nsamples = BUFSIZE  / wav_header.sample_alignment;
-  int act_nsamples = m        / wav_header.sample_alignment;
+  int act_nsamples = m / wav_header.sample_alignment;           // number of samples we loaded
+  int act_nbytes   = act_nsamples / 8;                          // each sample encodes 1 bit
+
+  if (debug) {
+    printf("loaded # samples (=possibly encoded bits) = %d\n",act_nsamples);
+    printf("...corresponding to # of encoded bytes    = %d\n",act_nbytes  );
+  }
 
   uint8_t *bits = (uint8_t*) malloc( BUFSIZE / 8 );
-  decode_from_low_bits(buf_nsamples, buf, bits, wav_header.sample_alignment );    // channel 0
+  decode_from_low_bits(act_nsamples, buf, bits, wav_header.sample_alignment );    // channel 0
 
-  // if (debug) {
-  //   debugprint_hex("first few bytes of the extracted bits", 20, bits);
-  // } 
+  if (debug) {
+    debugprint_hex("first few bytes of the extracted bits", 20, bits);
+  } 
 
   // search for start pattern
 
   int found  = 0;
   int offset = 0;
   uint8_t *ptr = bits;
-  for (int j=0; j<(act_nsamples-16); j++) {
+  for (int j=0; j<(act_nbytes-16); j++) {
     if ( 0 == memcmp( ptr , key , 16 )) {
       found  = 1;
       offset = (ptr - bits);
@@ -502,6 +529,7 @@ void decrypt(const char *hex_key, const char* infile) {
     printf("output file name = `%s`\n",msg_out_fname);
 
     FILE *fmsg = fopen(msg_out_fname,"wb");
+    if (!fmsg) { error("fatal: cannot create decrypted message file"); }
     fwrite( bits+48+METADATA_LEN , 1 , msg_len , fmsg );
     fclose(fmsg);
 
